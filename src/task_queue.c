@@ -1,68 +1,101 @@
-#include <stdlib.h>
 #include "task_queue.h"
+#include "logger.h"
+#include <stdlib.h>
 
-TaskQueue* queue_create() {
+TaskQueue* init_task_queue(int capacity) {
     TaskQueue* queue = malloc(sizeof(TaskQueue));
-    queue->head = NULL;
-    queue->tail = NULL;
+    if (!queue) return NULL;
+    
+    queue->tasks = malloc(sizeof(Task*) * capacity);
+    if (!queue->tasks) {
+        free(queue);
+        return NULL;
+    }
+    
+    queue->capacity = capacity;
     queue->size = 0;
-    pthread_mutex_init(&queue->lock, NULL);
+    queue->front = 0;
+    queue->rear = -1;
+    
+    pthread_mutex_init(&queue->mutex, NULL);
+    pthread_cond_init(&queue->not_empty, NULL);
+    pthread_cond_init(&queue->not_full, NULL);
+    
     return queue;
 }
 
-void queue_destroy(TaskQueue* queue) {
-    pthread_mutex_lock(&queue->lock);
-    TaskNode* current = queue->head;
-    while (current != NULL) {
-        TaskNode* next = current->next;
-        task_destroy(current->task);
-        free(current);
-        current = next;
+int enqueue_task(TaskQueue* queue, Task* task) {
+    pthread_mutex_lock(&queue->mutex);
+    fprintf(stdout, "enqueue task");
+    fflush(stdout);
+    while (queue->size >= queue->capacity) {
+        pthread_cond_wait(&queue->not_full, &queue->mutex);
     }
-    pthread_mutex_unlock(&queue->lock);
-    pthread_mutex_destroy(&queue->lock);
-    free(queue);
-}
-
-void queue_push(TaskQueue* queue, Task* task) {
-    TaskNode* node = malloc(sizeof(TaskNode));
-    node->task = task;
-    node->next = NULL;
-
-    pthread_mutex_lock(&queue->lock);
-    if (queue->tail == NULL) {
-        queue->head = node;
-        queue->tail = node;
-    } else {
-        queue->tail->next = node;
-        queue->tail = node;
-    }
+    
+    queue->rear = (queue->rear + 1) % queue->capacity;
+    queue->tasks[queue->rear] = task;
     queue->size++;
-    pthread_mutex_unlock(&queue->lock);
+    
+    pthread_cond_signal(&queue->not_empty);
+    pthread_mutex_unlock(&queue->mutex);
+    
+    log_message(LOG_DEBUG, "Task %d enqueued", task->task_id);
+    return 0;
 }
 
-Task* queue_pop(TaskQueue* queue) {
-    pthread_mutex_lock(&queue->lock);
-    if (queue->head == NULL) {
-        pthread_mutex_unlock(&queue->lock);
-        return NULL;
+Task* dequeue_task(TaskQueue* queue) {
+    pthread_mutex_lock(&queue->mutex);
+    
+    while (queue->size == 0) {
+        pthread_cond_wait(&queue->not_empty, &queue->mutex);
     }
-
-    TaskNode* node = queue->head;
-    Task* task = node->task;
-    queue->head = node->next;
-    if (queue->head == NULL) {
-        queue->tail = NULL;
-    }
+    
+    Task* task = queue->tasks[queue->front];
+    queue->front = (queue->front + 1) % queue->capacity;
     queue->size--;
-    free(node);
-    pthread_mutex_unlock(&queue->lock);
+    
+    pthread_cond_signal(&queue->not_full);
+    pthread_mutex_unlock(&queue->mutex);
+    
+    log_message(LOG_DEBUG, "Task %d dequeued", task->task_id);
     return task;
 }
 
-int queue_is_empty(TaskQueue* queue) {
-    pthread_mutex_lock(&queue->lock);
-    int empty = (queue->size == 0);
-    pthread_mutex_unlock(&queue->lock);
-    return empty;
+
+void cleanup_task_queue(TaskQueue* queue) {
+    if (queue == NULL) {
+        return; // Nothing to clean up
+    }
+
+    // Lock the mutex before cleaning up
+    pthread_mutex_lock(&queue->mutex);
+
+    // Free all tasks in the queue
+    for (int i = 0; i < queue->size; ++i) {
+        int index = (queue->front + i) % queue->capacity;
+        if (queue->tasks[index] != NULL) {
+            free_task(queue->tasks[index]); // Free individual tasks
+            queue->tasks[index] = NULL;
+        }
+    }
+
+    // Free the tasks array
+    if (queue->tasks != NULL) {
+        free(queue->tasks);
+        queue->tasks = NULL;
+    }
+
+    // Unlock and destroy the mutex
+    pthread_mutex_unlock(&queue->mutex);
+    pthread_mutex_destroy(&queue->mutex);
+
+    // Destroy the condition variables
+    pthread_cond_destroy(&queue->not_empty);
+    pthread_cond_destroy(&queue->not_full);
+
+    // Reset fields
+    queue->capacity = 0;
+    queue->size = 0;
+    queue->front = 0;
+    queue->rear = 0;
 }
