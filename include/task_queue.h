@@ -1,25 +1,22 @@
 #ifndef TASK_QUEUE_H
 #define TASK_QUEUE_H
 
-#include <pthread.h>
 #include "task.h"
 
-typedef struct TaskNode {
-    Task* task;
-    struct TaskNode* next;
-} TaskNode;
-
 typedef struct {
-    TaskNode* head;
-    TaskNode* tail;
+    Task** tasks;
+    int capacity;
     int size;
-    pthread_mutex_t lock;
+    int front;
+    int rear;
+    pthread_mutex_t mutex;
+    pthread_cond_t not_empty;
+    pthread_cond_t not_full;
 } TaskQueue;
 
-TaskQueue* queue_create();
-void queue_destroy(TaskQueue* queue);
-void queue_push(TaskQueue* queue, Task* task);
-Task* queue_pop(TaskQueue* queue);
-int queue_is_empty(TaskQueue* queue);
+TaskQueue* init_task_queue(int capacity);
+int enqueue_task(TaskQueue* queue, Task* task);
+Task* dequeue_task(TaskQueue* queue);
+void cleanup_task_queue(TaskQueue* queue);
 
 #endif
