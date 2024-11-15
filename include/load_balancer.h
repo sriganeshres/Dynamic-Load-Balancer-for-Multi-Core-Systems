@@ -1,28 +1,30 @@
 #ifndef LOAD_BALANCER_H
 #define LOAD_BALANCER_H
 
-#include <pthread.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
-
-#include "core.h"
+#include "config.h"
+#include "cpu_stats.h"
 #include "task_queue.h"
+#include <pthread.h>
+#include <sched.h>
+
 
 typedef struct {
-    Core** cores;
-    int num_cores;
+    LoadBalancerConfig* config;
+    CPUMonitor* cpu_monitor;
     TaskQueue* task_queue;
-    TaskQueue* completed_tasks;
-    int total_tasks;
-    pthread_t* core_threads;
-    pthread_t balancer_thread;
-    int is_running;
+    pthread_t monitor_thread;
+    pthread_t scheduler_thread;
+    int running;
 } LoadBalancer;
 
-LoadBalancer* balancer_create(int num_cores);
-void balancer_destroy(LoadBalancer* balancer);
-void balancer_run_simulation(LoadBalancer* balancer, int duration, double task_generation_rate);
-void balancer_print_stats(LoadBalancer* balancer);
+LoadBalancer* init_load_balancer(LoadBalancerConfig* config);
+int submit_task(LoadBalancer* lb, void (*function)(void*), void* args, TaskPriority priority);
+void start_load_balancer(LoadBalancer* lb);
+void stop_load_balancer(LoadBalancer* lb);
+void* monitor_thread_func(void* arg);
+void* scheduler_thread_func(void* arg);
+int find_best_cpu(CPUMonitor* monitor);
+void wait_for_tasks_completion(LoadBalancer* lb);
+void cancel_pending_tasks(LoadBalancer* lb);
 
 #endif
