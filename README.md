@@ -1,130 +1,296 @@
-# Dynamic Load Balancer for Multi-Core Systems
+# CPU Load Balancer Documentation
 
-## Introduction
-The dynamic load balancer project aims to create an efficient and intelligent system for distributing tasks across multiple CPU cores. This load balancer ensures that system resources are utilized optimally by allocating tasks to cores based on their real-time workload, preventing any single core from becoming overburdened while others remain underutilized.
+## Table of Contents
+1. [Overview](#overview)
+2. [Architecture](#architecture)
+3. [Components](#components)
+4. [Configuration](#configuration)
+5. [Core Features](#core-features)
+6. [Building and Installation](#building-and-installation)
+7. [Usage](#usage)
+8. [Technical Details](#technical-details)
 
-## Project Structure
-The project is organized into the following directories and files:
+## Overview
 
-### include/
-This directory contains the header files that define the project's main components and interfaces.
+The CPU Load Balancer is a sophisticated system designed to distribute computational tasks across multiple CPU cores efficiently. It provides dynamic load balancing, task prioritization, and real-time CPU monitoring capabilities.
 
-1. **task.h**: Defines the `Task` structure and related functions for creating, destroying, and calculating the duration of tasks.
-2. **core.h**: Defines the `Core` structure and functions for managing individual CPU cores, including adding tasks, retrieving the next task, and getting the current load.
-3. **task_queue.h**: Defines a thread-safe queue implementation for managing tasks.
-4. **load_balancer.h**: Defines the main `LoadBalancer` structure and functions for creating, running, and managing the load balancer.
+File Structure:
 
-### src/
-This directory contains the implementation files for the project's components.
+```
+.
+├── build
+│   ├── CMakeCache.txt
+│   ├── cmake_install.cmake
+│   ├── cpu_balancer
+│   └── Makefile
+├── CMakeLists.txt
+├── config
+│   └── cpu_balancer.conf
+├── cpu_balancer.log
+├── include
+│   ├── config.h
+│   ├── cpu_stats.h
+│   ├── load_balancer.h
+│   ├── logger.h
+│   ├── task.h
+│   └── task_queue.h
+├── Makefile
+├── README.md
+├── Red.md
+└── src
+    ├── config.c
+    ├── cpu_stats.c
+    ├── load_balancer.c
+    ├── logger.c
+    ├── main.c
+    ├── task.c
+    └── task_queue.c
+```
 
-1. **task.c**: Implements the functions defined in `task.h`.
-2. **core.c**: Implements the functions defined in `core.h`.
-3. **task_queue.c**: Implements the functions defined in `task_queue.h`.
-4. **load_balancer.c**: Implements the functions defined in `load_balancer.h`.
-5. **main.c**: Provides a sample usage example for the load balancer.
+### Key Features
+- Dynamic task distribution across multiple CPU cores
+- Real-time CPU load monitoring and statistics
+- Priority-based task scheduling
+- Configurable load thresholds and monitoring intervals
+- Detailed logging system
+- Graceful shutdown handling
+- Task queue management
 
-### Makefile
-The Makefile is used to build the project and manage the compilation process.
+## Architecture
 
-## Key Components
+The system follows a modular architecture with the following main components:
 
-### Task
-The `Task` structure represents a unit of work to be processed by the load balancer. Each task has the following attributes:
+```
+Load Balancer
+    ├── CPU Monitor
+    │   └── CPU Stats
+    ├── Task Queue
+    │   └── Tasks
+    ├── Configuration
+    └── Logger
+```
 
-- `task_id`: A unique identifier for the task.
-- `workload`: The simulated workload of the task, measured in seconds.
-- `assigned_core`: The ID of the CPU core that the task is currently assigned to.
-- `start_time`: The time when the task started processing.
-- `completion_time`: The time when the task finished processing.
+### Threading Model
+- Monitor Thread: Continuously monitors CPU statistics
+- Scheduler Thread: Handles task distribution
+- Task Threads: Individual threads for each task execution
 
-The `task.c` file provides functions for creating, destroying, and calculating the duration of a task.
+## Components
 
-### Core
-The `Core` structure represents a single CPU core and its associated properties. Each core has the following attributes:
+### 1. Load Balancer (`load_balancer.h`)
+The core component that orchestrates task distribution and system management.
 
-- `core_id`: A unique identifier for the core.
-- `current_load`: The current workload of the core, measured in seconds.
-- `tasks`: A thread-safe queue of tasks assigned to the core.
-- `total_tasks_processed`: The total number of tasks processed by the core.
-- `is_active`: A flag indicating whether the core is currently active and processing tasks.
-- `lock`: A mutex lock for thread-safe access to the core's properties.
-
-The `core.c` file provides functions for creating, destroying, adding tasks, retrieving the next task, and getting the current load of a core.
-
-### Task Queue
-The `TaskQueue` structure is a thread-safe queue implementation used to manage the tasks. It has the following attributes:
-
-- `head`: A pointer to the first node in the queue.
-- `tail`: A pointer to the last node in the queue.
-- `size`: The number of tasks currently in the queue.
-- `lock`: A mutex lock for thread-safe access to the queue.
-
-The `task_queue.c` file provides functions for creating, destroying, pushing, popping, and checking the emptiness of the queue.
-
-### Load Balancer
-The `LoadBalancer` structure is the main component that manages the overall load balancing process. It has the following attributes:
-
-- `cores`: An array of `Core` pointers representing the available CPU cores.
-- `num_cores`: The number of CPU cores in the system.
-- `task_queue`: A queue of tasks waiting to be assigned to cores.
-- `completed_tasks`: A queue of tasks that have been completed.
-- `total_tasks`: The total number of tasks generated during the simulation.
-- `core_threads`: An array of thread IDs for the core processing threads.
-- `balancer_thread`: The thread ID for the load balancing thread.
-- `is_running`: A flag indicating whether the load balancer is currently running.
-
-The `load_balancer.c` file provides functions for creating, destroying, running the simulation, and printing the performance statistics.
-
-## Load Balancing Algorithm
-The load balancing algorithm in this project uses a round-robin approach to select the next core for task assignment. The `select_optimal_core` function in `load_balancer.c` is responsible for this task selection:
-
+#### Key Functions:
 ```c
-static int current_core_index = 0;
+LoadBalancer* init_load_balancer(LoadBalancerConfig* config);
+int submit_task(LoadBalancer* lb, void (*function)(void*), void* args, TaskPriority priority);
+void start_load_balancer(LoadBalancer* lb);
+void stop_load_balancer(LoadBalancer* lb);
+```
 
-static Core* select_optimal_core(LoadBalancer* balancer) {
-    Core* optimal_core = balancer->cores[current_core_index];
-    current_core_index = (current_core_index + 1) % balancer->num_cores;
-    return optimal_core;
+### 2. CPU Monitor (`cpu_stats.h`)
+Handles CPU statistics collection and analysis.
+
+#### CPU Stats Structure:
+```c
+typedef struct {
+    int cpu_id;
+    double current_usage;
+    double *usage_history;
+    int history_index;
+    uint64_t user_time;
+    uint64_t system_time;
+    uint64_t idle_time;
+    double temperature;
+    double predicted_load;
+    int active_tasks;
+} CPUStats;
+```
+
+### 3. Task Queue (`task_queue.h`)
+Manages task scheduling and queuing.
+
+#### Features:
+- Circular buffer implementation
+- Thread-safe operations
+- Priority-based ordering
+- Dynamic capacity management
+
+### 4. Task Management (`task.h`)
+Defines task structure and handling.
+
+#### Task Priority Levels:
+```c
+typedef enum {
+    PRIORITY_LOW = 0,
+    PRIORITY_MEDIUM = 1,
+    PRIORITY_HIGH = 2,
+    PRIORITY_CRITICAL = 3
+} TaskPriority;
+```
+
+#### Task States:
+```c
+typedef enum {
+    STATUS_PENDING,
+    STATUS_RUNNING,
+    STATUS_COMPLETED,
+    STATUS_FAILED
+} TaskStatus;
+```
+
+## Configuration
+
+### Default Configuration
+```c
+LoadBalancerConfig* init_default_config(void) {
+    LoadBalancerConfig* config = malloc(sizeof(LoadBalancerConfig));
+    config->max_tasks = 10;
+    config->monitoring_interval_ms = 100;
+    config->high_load_threshold = 80.0;
+    config->low_load_threshold = 20.0;
+    config->load_history_size = 10;
+    config->enable_load_prediction = 1;
+    config->enable_detailed_logging = 1;
+    config->log_file_path = strdup("./cpu_balancer.log");
+    config->rebalance_threshold = 30;
+    config->min_task_runtime_ms = 5;
+    return config;
 }
 ```
 
-The `current_core_index` variable keeps track of the next core to be selected. The `select_optimal_core` function simply returns the core at the `current_core_index` position and then increments the index to the next core, wrapping around to the beginning of the `cores` array if necessary.
+### Configuration Parameters
+- `max_tasks`: Maximum number of tasks in queue
+- `monitoring_interval_ms`: CPU monitoring frequency
+- `high_load_threshold`: Upper CPU load threshold (%)
+- `low_load_threshold`: Lower CPU load threshold (%)
+- `load_history_size`: Number of historical load samples
+- `enable_load_prediction`: Enable predictive load balancing
+- `enable_detailed_logging`: Enable verbose logging
+- `rebalance_threshold`: Load difference triggering rebalance
+- `min_task_runtime_ms`: Minimum task execution time
 
-This round-robin approach ensures that tasks are distributed evenly across all available cores, regardless of their current workload. While this is a simple and effective load balancing strategy, more sophisticated algorithms could be implemented to account for factors such as core utilization, task priority, or task dependencies.
+## Core Features
 
-## Simulation Execution
-The main entry point of the project is the `main.c` file, which demonstrates how to use the load balancer. Here's a breakdown of the steps in the `main()` function:
+### 1. CPU Load Monitoring
+The system continuously monitors CPU usage through `/proc/stat`:
+```c
+void update_cpu_stats(CPUMonitor* monitor) {
+    // Read CPU statistics from /proc/stat
+    // Calculate usage percentages
+    // Update history and predictions
+}
+```
 
-1. Seed the random number generator with the current time.
-2. Create a `LoadBalancer` instance with 4 CPU cores.
-3. Start the load balancer simulation for 30 seconds, with a task generation rate of approximately 2 tasks per second.
-4. Print the performance statistics, including the total tasks generated, the number of tasks processed by each core, and the total number of tasks completed.
-5. Destroy the `LoadBalancer` instance and exit the program.
+### 2. Load Prediction
+Implements simple moving average prediction:
+```c
+double predict_cpu_load(CPUStats* cpu) {
+    double sum = 0.0;
+    int count = 0;
+    for (int i = 0; i < cpu->history_index; i++) {
+        sum += cpu->usage_history[i];
+        count++;
+    }
+    return count > 0 ? sum / count : cpu->current_usage;
+}
+```
 
-The `balancer_run_simulation` function is responsible for the main simulation logic:
+### 3. Task Distribution Algorithm
+The system finds the optimal CPU for task execution:
+```c
+int find_best_cpu(CPUMonitor* monitor) {
+    int best_cpu = -1;
+    double lowest_load = 999.9;
+    
+    for (int i = 0; i < monitor->num_cpus; i++) {
+        double effective_load = monitor->stats[i].current_usage;
+        if (monitor->config->enable_load_prediction) {
+            effective_load = (effective_load + monitor->stats[i].predicted_load) / 2;
+        }
+        effective_load += (monitor->stats[i].active_tasks * 10);
+        
+        if (effective_load < lowest_load) {
+            lowest_load = effective_load;
+            best_cpu = i;
+        }
+    }
+    return best_cpu;
+}
+```
 
-1. Start the core processing threads, each of which continuously checks the core's task queue and processes any available tasks.
-2. Start the load balancing thread, which continuously checks the task queue and assigns new tasks to the least loaded core using the `select_optimal_core` function.
-3. Generate new tasks at the specified rate and add them to the task queue.
-4. After the specified duration, signal the core and load balancing threads to stop, and wait for them to finish.
+## Building and Installation
 
-The `balancer_print_stats` function is used to print the performance statistics at the end of the simulation.
+### Prerequisites
+- CMake (>= 3.14)
+- C11 compatible compiler
+- pthread library
+- json-c library
+- pkg-config
 
-## Building and Running the Project
-To build and run the project, follow these steps:
+### Build Steps
+```bash
+mkdir build
+cd build
+cmake ..
+make
+```
 
-1. Navigate to the project directory in your terminal.
-2. Run the following commands to build the project:
-   ```
-   mkdir obj bin
-   make
-   ```
-3. Run the load balancer simulation:
-   ```
-   ./bin/load_balancer
-   ```
+### Installation
+```bash
+sudo make install
+```
 
-This will output the simulation results, including the total tasks generated, the number of tasks processed by each core, and the total number of tasks completed.
+## Usage
 
-## Conclusion
-The dynamic load balancer project provides a robust and customizable framework for distributing tasks across multiple CPU cores. The modular design, with clear separation of concerns, makes it easy to extend or modify the implementation to suit specific requirements. The detailed documentation should help you understand the project's architecture and implementation, enabling you to build upon it or adapt it to your own needs.
+### Basic Usage
+```bash
+./cpu_balancer <num_cores> <num_tasks>
+```
+
+### Example
+```bash
+./cpu_balancer 4 20  # Use 4 cores and create 20 tasks
+```
+
+### Task Creation Example
+```c
+void* cpu_task(void* arg) {
+    int task_id = *(int*)arg;
+    // Task implementation
+    free(arg);
+    return NULL;
+}
+
+// Submit task
+int* task_id = malloc(sizeof(int));
+*task_id = 1;
+submit_task(lb, cpu_task, task_id, PRIORITY_MEDIUM);
+```
+
+## Technical Details
+
+### Thread Safety
+- Mutex protection for shared resources
+- Condition variables for synchronization
+- Atomic operations for task ID generation
+
+### Memory Management
+- Dynamic allocation for task queue
+- Proper cleanup in destructors
+- Memory leak prevention through systematic resource tracking
+
+### Error Handling
+- Return value checking
+- Logging of errors
+- Graceful degradation under error conditions
+
+### Shutdown Protocol
+1. Signal handler catches SIGINT
+2. Sets running flag to false
+3. Cancels pending tasks
+4. Waits for active tasks completion
+5. Joins monitor and scheduler threads
+6. Cleans up resources
+
+This documentation provides a comprehensive overview of the CPU Load Balancer system. For specific implementation details, refer to the source code and comments within each file.
