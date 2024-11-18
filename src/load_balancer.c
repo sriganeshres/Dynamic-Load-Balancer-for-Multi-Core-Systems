@@ -57,9 +57,7 @@ void* monitor_thread_func(void* arg) {
 
 int find_best_cpu(CPUMonitor* monitor) {
     int best_cpu = -1;
-    double lowest_load = 999.9;
-    log_message(LOG_INFO, "%d", monitor->num_cpus);
-    
+    double lowest_load = 999.9;    
     for (int i = 0; i < monitor->num_cpus; i++) {
         double effective_load = monitor->stats[i].current_usage;
         
